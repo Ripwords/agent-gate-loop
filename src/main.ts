@@ -63,13 +63,23 @@ async function main() {
   const outcome = await runLoop(issue, cfg, await buildDeps(repo, base, issue, cfg, (m) => console.log(m)));
   const report = renderReport(outcome, runUrl);
 
+  const summary = process.env.GITHUB_STEP_SUMMARY;
+  if (summary) await appendFile(summary, report);
+
   let prNumber = "";
   if (outcome.result === "needs-info") {
     await gh.comment(issueNumber, `${report}\nPlease add the missing details, then comment \`/agent\` to try again.`);
   } else if (!outcome.hasDiff) {
     await gh.comment(issueNumber, report);
   } else {
-    await pushBranch(repo, token, ownerRepo, branch);
+    try {
+      await pushBranch(repo, token, ownerRepo, branch);
+    } catch (err) {
+      // The loop's work is lost if nobody sees the report, so post it before failing.
+      const why = err instanceof Error ? err.message : String(err);
+      await gh.comment(issueNumber, `${report}\n\n❌ Could not push the branch, so no PR was opened: ${why}`);
+      throw err;
+    }
     const labels = [`agent:${outcome.result}`, ...(outcome.highRisk ? ["agent:high-risk"] : [])];
     const { number: n } = await gh.upsertPr({
       head: branch,
@@ -83,8 +93,6 @@ async function main() {
     await gh.comment(issueNumber, `🤖 Agent loop finished: **${outcome.result}**. See #${n}.`);
   }
 
-  const summary = process.env.GITHUB_STEP_SUMMARY;
-  if (summary) await appendFile(summary, report);
   await setOutputs({
     result: outcome.result,
     pr_number: prNumber,
