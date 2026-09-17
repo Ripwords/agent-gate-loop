@@ -3,7 +3,7 @@ import { relative, resolve } from "node:path";
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk";
 import { isProtected } from "../guards";
 import type { AgentRun, Config, Intake, Issue } from "../types";
-import { agentEnv, errorMessage, issueBlock, runSession, sessionError, stripTag } from "./session";
+import { agentEnv, crashCost, errorMessage, issueBlock, runSession, sessionError, stripTag } from "./session";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 export const BLOCKED_BASH =
@@ -87,8 +87,8 @@ export function makeFixer(repo: string, cfg: Config) {
       return { ok: !error, costUsd: r?.total_cost_usd ?? 0, error };
     } catch (err) {
       sessionId = undefined;
-      // The real spend of a crashed session is unknown; count its whole budget so the loop cannot overspend.
-      return { ok: false, costUsd: budgetUsd, error: `${errorMessage(err)} (cost unknown; counted as $${budgetUsd.toFixed(2)})` };
+      const { costUsd, note } = crashCost(err, budgetUsd);
+      return { ok: false, costUsd, error: `${errorMessage(err)}${note}` };
     }
   };
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { CheckResult, Config, GuardOutput, Issue, ReviewRun } from "../types";
-import { agentEnv, errorMessage, issueBlock, runSession, sessionError, stripTag } from "./session";
+import { agentEnv, crashCost, errorMessage, issueBlock, runSession, sessionError, stripTag } from "./session";
 
 const ReviewSchema = z.object({
   findings: z.array(
@@ -91,8 +91,8 @@ export function makeReviewer(repo: string, cfg: Config, rubric: string) {
       if (!parsed.success) return { ok: false, costUsd, error: `Invalid findings: ${parsed.error.message}`, findings: null, model };
       return { ok: true, costUsd, findings: parsed.data.findings, model };
     } catch (err) {
-      // The real spend of a crashed session is unknown; count its whole budget so the loop cannot overspend.
-      return { ok: false, costUsd: budgetUsd, error: `${errorMessage(err)} (cost unknown; counted as $${budgetUsd.toFixed(2)})`, findings: null, model };
+      const { costUsd, note } = crashCost(err, budgetUsd);
+      return { ok: false, costUsd, error: `${errorMessage(err)}${note}`, findings: null, model };
     }
   };
 }

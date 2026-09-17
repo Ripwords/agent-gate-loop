@@ -18,27 +18,58 @@ export function agentEnv(cfg: Pick<Config, "anthropicApiKey" | "claudeCodeOauthT
   };
 }
 
+/** A session that threw. `started` is false when it failed before the model answered, so nothing was spent. */
+export class SessionError extends Error {
+  constructor(
+    message: string,
+    readonly started: boolean,
+  ) {
+    super(message);
+  }
+}
+
+const MAX_ERROR_CHARS = 600;
+
+/** Keeps the readable lines of CLI output: drops warnings, stack frames and minified source. */
+export function cleanError(text: string): string {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !line.startsWith("⚠") &&
+        !line.startsWith("at ") &&
+        !line.startsWith("::error") &&
+        !line.includes("$bunfs") &&
+        line.length <= 300,
+    );
+  const unique = [...new Set(lines)].join("\n");
+  return unique.length > MAX_ERROR_CHARS ? `${unique.slice(0, MAX_ERROR_CHARS)}…` : unique;
+}
+
 /** Runs one headless session and returns its final result message. */
 export async function runSession(prompt: string, options: Options): Promise<SDKResultMessage | null> {
   let result: SDKResultMessage | null = null;
+  let started = false;
   const stderr: string[] = [];
   try {
     for await (const msg of query({ prompt, options: { ...options, stderr: (data) => stderr.push(data) } })) {
+      if (msg.type === "assistant") started = true;
       if (msg.type === "result") result = msg;
     }
   } catch (err) {
     if (result) return result;
     const message = err instanceof Error ? err.message : String(err);
-    // The CLI's hardening warnings are noise here; the SDK message may already carry stderr.
-    const tail = stderr
-      .join("")
-      .split("\n")
-      .filter((line) => line.trim() && !line.startsWith("⚠"))
-      .join("\n")
-      .slice(-2000);
-    throw new Error(tail && !message.includes(tail) ? `${message}\n${tail}` : message);
+    throw new SessionError(cleanError(`${message}\n${stderr.join("")}`), started);
   }
   return result;
+}
+
+/** What a crashed session cost: nothing if it never started, otherwise its whole budget (the real spend is unknown). */
+export function crashCost(err: unknown, budgetUsd: number): { costUsd: number; note: string } {
+  if (err instanceof SessionError && !err.started) return { costUsd: 0, note: "" };
+  return { costUsd: budgetUsd, note: ` (cost unknown; counted as $${budgetUsd.toFixed(2)})` };
 }
 
 export function sessionError(r: SDKResultMessage | null): string | undefined {

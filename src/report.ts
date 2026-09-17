@@ -20,7 +20,7 @@ export function renderReport(o: LoopOutcome, runUrl?: string): string {
     `**Rounds:** ${o.rounds.length} · **Agent cost:** ${usd(o.costUsd)}${runUrl ? ` · [run log](${runUrl})` : ""}`,
     "",
   ];
-  if (o.highRisk) lines.push("> ⚠️ Jev rated this issue high risk, so this PR stays a draft.", "");
+  if (o.highRisk && o.hasDiff) lines.push("> ⚠️ Jev rated this issue high risk, so this PR stays a draft.", "");
   lines.push(
     "### Intake",
     "",
