@@ -28,7 +28,8 @@ export async function exec(cmd: string[], opts: ExecOptions): Promise<ExecResult
 
 /** Runs git and returns stdout. The error names only the subcommand, so tokens in args never leak. */
 export async function git(cwd: string, args: string[]): Promise<string> {
-  const r = await exec(["git", ...args], { cwd });
+  // Never run the repo's hooks: they could be changed by the agent, and would run with our env.
+  const r = await exec(["git", "-c", "core.hooksPath=/dev/null", ...args], { cwd, env: scrubbedEnv() });
   if (r.exitCode !== 0) throw new Error(`git ${args[0]} failed (${r.exitCode}): ${r.stderr.trim()}`);
   return r.stdout;
 }

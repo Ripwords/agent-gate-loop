@@ -134,5 +134,5 @@ export function makeGitHub(token: string, ownerRepo: string) {
 
 export async function pushBranch(repoDir: string, token: string, ownerRepo: string, branch: string): Promise<void> {
   const url = `https://x-access-token:${token}@github.com/${ownerRepo}.git`;
-  await git(repoDir, ["push", "--force", "--quiet", url, `HEAD:refs/heads/${branch}`]);
+  await git(repoDir, ["push", "--force", "--no-verify", "--quiet", url, `HEAD:refs/heads/${branch}`]);
 }
