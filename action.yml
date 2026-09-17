@@ -85,6 +85,21 @@ runs:
     - uses: oven-sh/setup-bun@v2
       with:
         bun-version: 1.4.0
+    # Claude Code needs bubblewrap on Linux to keep secrets out of the agent's shell
+    # (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB). Ubuntu 24.04 blocks the user namespaces it
+    # uses unless AppArmor allows them, so loosen that only if the probe fails.
+    - name: Install bubblewrap
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        if ! command -v bwrap >/dev/null; then
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+        fi
+        if ! bwrap --ro-bind / / --dev /dev true 2>/dev/null; then
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        fi
+        bwrap --ro-bind / / --dev /dev true
     - name: Install agent-gate-loop
       shell: bash
       working-directory: ${{ github.action_path }}
