@@ -1,0 +1,92 @@
+name: agent-loop
+
+on:
+  workflow_call:
+    inputs:
+      checks:
+        description: Shell commands run after each round, one per line.
+        type: string
+        required: true
+      max_rounds:
+        type: string
+        default: "2"
+      max_cost_usd:
+        type: string
+        default: "2"
+      fixer_model:
+        type: string
+        default: claude-sonnet-5
+      reviewer_model:
+        type: string
+        default: auto
+      review_rubric:
+        type: string
+        default: ""
+      review_shortlist:
+        type: string
+        default: ""
+      node_version:
+        description: Node.js version for the repo's own checks.
+        type: string
+        default: "24"
+    secrets:
+      ANTHROPIC_API_KEY:
+        description: Pay-per-use API key. Set this or CLAUDE_CODE_OAUTH_TOKEN.
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: Claude subscription token. Used when ANTHROPIC_API_KEY is not set.
+        required: false
+      TYPESAFE_API_KEY:
+        required: true
+      AGENT_GITHUB_TOKEN:
+        description: Optional PAT or app token so the PR triggers CI. Falls back to the job token.
+        required: false
+    outputs:
+      result:
+        value: ${{ jobs.agent.outputs.result }}
+      pr_number:
+        value: ${{ jobs.agent.outputs.pr_number }}
+
+jobs:
+  agent:
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'agent:run') ||
+      (github.event_name == 'issue_comment' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/agent'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    concurrency:
+      group: agent-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    outputs:
+      result: ${{ steps.loop.outputs.result }}
+      pr_number: ${{ steps.loop.outputs.pr_number }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node_version }}
+      - name: Enable corepack
+        run: corepack enable
+      - name: Install ni
+        run: npm install -g @antfu/ni
+      - id: loop
+        uses: Ripwords/agent-gate-loop@main
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          typesafe_api_key: ${{ secrets.TYPESAFE_API_KEY }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          checks: ${{ inputs.checks }}
+          max_rounds: ${{ inputs.max_rounds }}
+          max_cost_usd: ${{ inputs.max_cost_usd }}
+          fixer_model: ${{ inputs.fixer_model }}
+          reviewer_model: ${{ inputs.reviewer_model }}
+          review_rubric: ${{ inputs.review_rubric }}
+          review_shortlist: ${{ inputs.review_shortlist }}

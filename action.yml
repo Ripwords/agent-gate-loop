@@ -1,0 +1,116 @@
+name: agent-gate-loop
+description: Turn a GitHub issue into a pull request through an agent fix loop gated by checks, an AI reviewer, and TypeSafe Jev.
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  anthropic_api_key:
+    description: Anthropic API key for the fixer and reviewer agents. Use a spend-limited key. Set this or claude_code_oauth_token.
+    default: ""
+  claude_code_oauth_token:
+    description: Claude subscription token (from `claude setup-token`). Used when anthropic_api_key is empty.
+    default: ""
+  typesafe_api_key:
+    description: TypeSafe API key for the Jev gate.
+    required: true
+  github_token:
+    description: Token with contents, pull-requests and issues write access. PRs opened with the default token do not trigger other workflows.
+    default: ${{ github.token }}
+  checks:
+    description: Shell commands run in the repo root after each round, one per line. All must pass.
+    required: true
+  issue_number:
+    description: Issue to work on. Defaults to the issue from the event.
+    default: ""
+  max_rounds:
+    description: Maximum fix rounds.
+    default: "2"
+  max_cost_usd:
+    description: Stop when agent cost reaches this many US dollars.
+    default: "2"
+  fixer_model:
+    description: Claude model for the fixer.
+    default: claude-sonnet-5
+  reviewer_model:
+    description: Claude model for the reviewer, or "auto" to pick Haiku for small changes and Sonnet otherwise.
+    default: auto
+  jev_model:
+    description: TypeSafe model for the gate.
+    default: jev-latest
+  protected_paths:
+    description: Globs the agent may not change, one per line.
+    default: |
+      .github/**
+      .claude/**
+  max_diff_lines:
+    description: Maximum added plus removed lines.
+    default: "800"
+  pass_threshold:
+    description: Minimum Jev probability that the diff implements the issue.
+    default: "0.8"
+  min_confidence:
+    description: Jev answers below this confidence escalate to a human.
+    default: "0.7"
+  small_diff_files:
+    description: With reviewer_model auto, changes touching at most this many files use the small reviewer model.
+    default: "8"
+  small_diff_lines:
+    description: With reviewer_model auto, changes of at most this many lines use the small reviewer model.
+    default: "200"
+  review_rubric:
+    description: Optional path to a markdown review rubric, read from the base commit.
+    default: ""
+  review_shortlist:
+    description: Optional path to a review-shortlist.json of grep rules, read from the base commit.
+    default: ""
+
+outputs:
+  result:
+    description: passed, escalated, failed, needs-info, or skipped.
+    value: ${{ steps.run.outputs.result }}
+  pr_number:
+    description: The pull request number, when one was opened.
+    value: ${{ steps.run.outputs.pr_number }}
+  rounds:
+    description: Rounds run.
+    value: ${{ steps.run.outputs.rounds }}
+  cost_usd:
+    description: Estimated agent cost in US dollars.
+    value: ${{ steps.run.outputs.cost_usd }}
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.4.0
+    - name: Install agent-gate-loop
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: bun install --frozen-lockfile --production
+    - id: run
+      name: Run agent loop
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        INPUT_ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        INPUT_CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        INPUT_TYPESAFE_API_KEY: ${{ inputs.typesafe_api_key }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_CHECKS: ${{ inputs.checks }}
+        INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        INPUT_MAX_ROUNDS: ${{ inputs.max_rounds }}
+        INPUT_MAX_COST_USD: ${{ inputs.max_cost_usd }}
+        INPUT_FIXER_MODEL: ${{ inputs.fixer_model }}
+        INPUT_REVIEWER_MODEL: ${{ inputs.reviewer_model }}
+        INPUT_JEV_MODEL: ${{ inputs.jev_model }}
+        INPUT_PROTECTED_PATHS: ${{ inputs.protected_paths }}
+        INPUT_MAX_DIFF_LINES: ${{ inputs.max_diff_lines }}
+        INPUT_PASS_THRESHOLD: ${{ inputs.pass_threshold }}
+        INPUT_MIN_CONFIDENCE: ${{ inputs.min_confidence }}
+        INPUT_SMALL_DIFF_FILES: ${{ inputs.small_diff_files }}
+        INPUT_SMALL_DIFF_LINES: ${{ inputs.small_diff_lines }}
+        INPUT_REVIEW_RUBRIC: ${{ inputs.review_rubric }}
+        INPUT_REVIEW_SHORTLIST: ${{ inputs.review_shortlist }}
+      run: bun "${{ github.action_path }}/src/main.ts"

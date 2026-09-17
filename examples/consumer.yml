@@ -1,0 +1,29 @@
+# Copy to .github/workflows/agent.yml in your repo.
+# Add secret TYPESAFE_API_KEY plus ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN
+# (the names Claude Code's GitHub setup uses), then label an issue `agent:run`
+# or comment `/agent` on it.
+name: agent
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  agent:
+    uses: Ripwords/agent-gate-loop/.github/workflows/agent-loop.yml@main
+    with:
+      checks: |
+        nci
+        nr typecheck
+        nr test
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
